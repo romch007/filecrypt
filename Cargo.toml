@@ -1,0 +1,18 @@
+[package]
+name = "filecrypt"
+description = "Encrypt and decrypt files with a password"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aes-gcm = "0.10.3"
+argon2 = { version = "0.5.3", features = ["std"] }
+atty = "0.2.14"
+bincode = "2.0.1"
+bytesize = "2.1.0"
+clap = { version = "4.5.50", features = ["derive"] }
+color-eyre = "0.6.5"
+colored = "3.0.0"
+hex = "0.4.3"
+rand = "0.9.2"
+rpassword = "7.4.0"
