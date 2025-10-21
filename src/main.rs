@@ -3,14 +3,13 @@ mod header;
 mod utils;
 
 use std::{
-    fs::File,
-    io::stdout,
+    fs::{File, OpenOptions},
     path::{Path, PathBuf},
 };
 
 use crate::header::Header;
 use clap::{Parser, Subcommand};
-use color_eyre::eyre::{Context, bail};
+use color_eyre::eyre::Context;
 
 #[derive(Debug, Parser)]
 #[command(version, about)]
@@ -61,58 +60,67 @@ fn dump_header(filepath: &Path) -> color_eyre::Result<()> {
     Ok(())
 }
 
-fn ask_password() -> color_eyre::Result<String> {
-    let password = rpassword::prompt_password("Password: ").wrap_err("failed to read password")?;
-
-    Ok(password)
-}
-
-fn ask_password_confirm() -> color_eyre::Result<String> {
-    let password = rpassword::prompt_password("Password: ").wrap_err("failed to read password")?;
-    let password_confirm =
-        rpassword::prompt_password("Retype password: ").wrap_err("failed to read password")?;
-
-    if password.as_str() != password_confirm.as_str() {
-        bail!("password mismatch");
-    }
-
-    Ok(password)
-}
-
 fn encrypt(filepath: &Path) -> color_eyre::Result<()> {
-    let mut input_file =
-        File::open(filepath).wrap_err_with(|| format!("cannot read {}", filepath.display()))?;
+    let mut input_file = File::open(filepath)
+        .wrap_err_with(|| format!("cannot open input file {}", filepath.display()))?;
     let metadata = input_file.metadata()?;
 
-    let password = ask_password_confirm()?;
+    let password = utils::ask_password_confirm()?;
 
     let (header, master_key) = Header::from_password(&password, metadata.len())?;
 
-    if atty::is(atty::Stream::Stdout) {
-        eprintln!("stdout is a terminal! Please redirect to a file or pipe.");
-        return Ok(());
-    }
+    let output_file_path = utils::append_extension(filepath);
+    let mut output_file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&output_file_path)
+        .wrap_err_with(|| format!("cannot open output file {}", filepath.display()))?;
 
-    let mut stdout = stdout().lock();
-
-    header.write(&mut stdout)?;
-    crypto::encrypt_file(&mut input_file, &mut stdout, master_key, header.nonce())?;
+    header.write(&mut output_file)?;
+    crypto::encrypt_file(
+        &mut input_file,
+        &mut output_file,
+        master_key,
+        header.nonce(),
+    )?;
 
     Ok(())
 }
 
 fn decrypt(filepath: &Path) -> color_eyre::Result<()> {
-    let mut input_file =
-        File::open(filepath).wrap_err_with(|| format!("cannot read {}", filepath.display()))?;
+    let mut input_file = File::open(filepath)
+        .wrap_err_with(|| format!("cannot open input file {}", filepath.display()))?;
 
     let header = Header::read(&mut input_file)?;
 
-    let password = ask_password()?;
+    let password = utils::ask_password()?;
     let master_key = header.decrypt_master_key(&password)?;
 
-    let mut stdout = stdout().lock();
+    if !utils::has_extension(filepath) {
+        eprintln!(
+            "The provided file '{}' does not have a '.filecrypt' extension.\n\
+                 Please rename it so that it ends with '.filecrypt'.",
+            filepath.display()
+        );
+        return Ok(());
+    }
 
-    crypto::decrypt_file(&mut input_file, &mut stdout, master_key, header.nonce())?;
+    let output_file_path = utils::remove_extension(filepath);
+
+    let mut output_file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&output_file_path)
+        .wrap_err_with(|| format!("cannot open output file {}", filepath.display()))?;
+
+    crypto::decrypt_file(
+        &mut input_file,
+        &mut output_file,
+        master_key,
+        header.nonce(),
+    )?;
 
     Ok(())
 }

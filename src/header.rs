@@ -133,3 +133,18 @@ impl Header {
         let _ = utils::print_hex_param("  encrypted master key: ", &self.enc_master_key, 16);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_and_decrypt_master_key() {
+        let pass = "abc";
+
+        let (header, master_key) = Header::from_password(pass, 0).unwrap();
+        let dec_master_key = header.decrypt_master_key(pass).unwrap();
+
+        assert_eq!(master_key, dec_master_key);
+    }
+}
