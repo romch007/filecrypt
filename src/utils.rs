@@ -12,11 +12,10 @@ pub fn print_hex_param(param: &str, bytes: &[u8], bytes_per_line: usize) -> io::
     stdout.write_all(param.as_bytes())?;
 
     for (i, byte) in bytes.iter().enumerate() {
-        if i % bytes_per_line == 0
-            && i != 0 {
-                writeln!(&mut stdout)?;
-                stdout.write_all(indent_str.as_bytes())?;
-            }
+        if i % bytes_per_line == 0 && i != 0 {
+            writeln!(&mut stdout)?;
+            stdout.write_all(indent_str.as_bytes())?;
+        }
         write!(&mut stdout, "{:02x} ", byte)?;
     }
     writeln!(&mut stdout)?;
@@ -40,6 +39,18 @@ pub fn ask_password_confirm() -> color_eyre::Result<String> {
     }
 
     Ok(password)
+}
+
+pub fn ask_confirmation(msg: &str) -> color_eyre::Result<bool> {
+    print!("{msg} (y/N) ");
+    io::stdout().flush()?;
+
+    let mut buffer = String::new();
+    io::stdin().read_line(&mut buffer)?;
+
+    let buffer = buffer.trim_end().to_lowercase();
+
+    Ok(buffer.as_str() == "y")
 }
 
 const FILE_EXTENSION: &str = "filecrypt";

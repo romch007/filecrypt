@@ -65,11 +65,21 @@ fn encrypt(filepath: &Path) -> color_eyre::Result<()> {
         .wrap_err_with(|| format!("cannot open input file {}", filepath.display()))?;
     let metadata = input_file.metadata()?;
 
+    let output_file_path = utils::append_extension(filepath);
+
+    if output_file_path.exists()
+        && !utils::ask_confirmation(&format!(
+            "File '{}' exists. Overwrite?",
+            output_file_path.display()
+        ))?
+    {
+        return Ok(());
+    }
+
     let password = utils::ask_password_confirm()?;
 
     let (header, master_key) = Header::from_password(&password, metadata.len())?;
 
-    let output_file_path = utils::append_extension(filepath);
     let mut output_file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -92,11 +102,6 @@ fn decrypt(filepath: &Path) -> color_eyre::Result<()> {
     let mut input_file = File::open(filepath)
         .wrap_err_with(|| format!("cannot open input file {}", filepath.display()))?;
 
-    let header = Header::read(&mut input_file)?;
-
-    let password = utils::ask_password()?;
-    let master_key = header.decrypt_master_key(&password)?;
-
     if !utils::has_extension(filepath) {
         eprintln!(
             "The provided file '{}' does not have a '.filecrypt' extension.\n\
@@ -107,6 +112,20 @@ fn decrypt(filepath: &Path) -> color_eyre::Result<()> {
     }
 
     let output_file_path = utils::remove_extension(filepath);
+
+    if output_file_path.exists()
+        && !utils::ask_confirmation(&format!(
+            "File '{}' exists. Overwrite?",
+            output_file_path.display()
+        ))?
+    {
+        return Ok(());
+    }
+
+    let header = Header::read(&mut input_file)?;
+
+    let password = utils::ask_password()?;
+    let master_key = header.decrypt_master_key(&password)?;
 
     let mut output_file = OpenOptions::new()
         .write(true)
