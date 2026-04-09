@@ -5,7 +5,7 @@ use argon2::Argon2;
 use bincode::{Decode, Encode};
 use color_eyre::eyre::{bail, eyre};
 use colored::Colorize;
-use rand::RngCore;
+use rand::Rng;
 
 use crate::utils;
 
