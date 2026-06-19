@@ -139,6 +139,7 @@ fn decrypt(filepath: &Path) -> color_eyre::Result<()> {
         &mut output_file,
         master_key,
         header.nonce(),
+        header.file_len(),
     )?;
 
     Ok(())

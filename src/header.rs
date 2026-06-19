@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
+use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead, aead::Payload};
 use argon2::Argon2;
 use bincode::{Decode, Encode};
 use color_eyre::eyre::{bail, eyre};
@@ -27,9 +27,33 @@ pub struct Header {
     file_len: u64,
 }
 
+fn master_key_aad(
+    salt: &[u8; 16],
+    mem_cost_kib: u32,
+    iterations: u32,
+    parallelism: u32,
+    nonce: &[u8; 12],
+    file_len: u64,
+) -> Vec<u8> {
+    let mut aad = Vec::with_capacity(9 + 1 + 16 + 4 + 4 + 4 + 12 + 8);
+    aad.extend_from_slice(MAGIC);
+    aad.push(VERSION);
+    aad.extend_from_slice(salt);
+    aad.extend_from_slice(&mem_cost_kib.to_le_bytes());
+    aad.extend_from_slice(&iterations.to_le_bytes());
+    aad.extend_from_slice(&parallelism.to_le_bytes());
+    aad.extend_from_slice(nonce);
+    aad.extend_from_slice(&file_len.to_le_bytes());
+    aad
+}
+
 impl Header {
     pub fn nonce(&self) -> &[u8; 12] {
         &self.nonce
+    }
+
+    pub fn file_len(&self) -> u64 {
+        self.file_len
     }
 
     pub fn from_password(password: &str, file_len: u64) -> color_eyre::Result<(Self, MasterKey)> {
@@ -55,8 +79,23 @@ impl Header {
         rng.fill_bytes(&mut nonce_bytes);
         let nonce = (&nonce_bytes).into();
 
+        let aad = master_key_aad(
+            &salt,
+            argon2.params().m_cost(),
+            argon2.params().t_cost(),
+            argon2.params().p_cost(),
+            &nonce_bytes,
+            file_len,
+        );
+
         let ciphertext = cipher
-            .encrypt(nonce, master_key.as_ref())
+            .encrypt(
+                nonce,
+                Payload {
+                    msg: master_key.as_ref(),
+                    aad: &aad,
+                },
+            )
             .map_err(|_| eyre!("failed to encrypt"))?;
         let mut enc_master_key = [0u8; 48];
         enc_master_key.copy_from_slice(&ciphertext);
@@ -91,9 +130,23 @@ impl Header {
 
         let cipher = Aes256Gcm::new(&kek.into());
         let nonce = (&self.nonce).into();
+        let aad = master_key_aad(
+            &self.salt,
+            self.mem_cost_kib,
+            self.iterations,
+            self.parallelism,
+            &self.nonce,
+            self.file_len,
+        );
         let plaintext = cipher
-            .decrypt(nonce, self.enc_master_key.as_ref())
-            .map_err(|_| eyre!("invalid password"))?;
+            .decrypt(
+                nonce,
+                Payload {
+                    msg: self.enc_master_key.as_ref(),
+                    aad: &aad,
+                },
+            )
+            .map_err(|_| eyre!("invalid password or tampered header"))?;
 
         let mut master_key = [0u8; 32];
         master_key.copy_from_slice(&plaintext);
